@@ -13,10 +13,12 @@
 use std::io::{self, BufRead};
 use std::process::{Command, Stdio};
 
+use serde::Serialize;
+
 /// The global zone swap usage is not calculated by zonememstat, but it still
 /// may be useful to be able to get allocated RSS and max memory for the global
 /// zone rather than omitting the entire record.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum Swap {
     Float(f64),
     None,
@@ -24,7 +26,7 @@ pub enum Swap {
 
 /// Not all zones have an alias. zonememstat will print these as `-`. For zones
 /// with no alias, we will represent that as None.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum Alias {
     String(String),
     None,
@@ -36,7 +38,7 @@ pub enum Alias {
 /// information.
 /// For the sake of consistency, the struct member names are the same as the
 /// output columns from the `zonememstat`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct ZoneMemStat {
     /// The zone name. This will be a uuid.
     pub zonename: String,
