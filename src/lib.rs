@@ -10,10 +10,11 @@
 
 #![crate_name = "zonememstat"]
 
-use std::io::{self, BufRead};
-use std::process::{Command, Stdio};
-
 use serde::Serialize;
+
+use tokio_process_stream::ProcessLineStream;
+use tokio::process::Command;
+use tokio_stream::StreamExt;
 
 /// The global zone swap usage is not calculated by zonememstat, but it still
 /// may be useful to be able to get allocated RSS and max memory for the global
@@ -57,29 +58,25 @@ pub struct ZoneMemStat {
     pub swap: Swap,
 }
 
-/// Takes no input. Returns the output from `zonememstat -Ha`.
-fn get_state() -> io::Result<impl Iterator<Item = String>> {
+/// Takes no input. Returns the output from `zonememstat -Ha` as async.
+async fn get_state() -> Result<Vec<ZoneMemStat>, Box<dyn std::error::Error>> {
     let zms = "zonememstat";
     let args = ["-H", "-a"];
 
-    // Create a new Command without involving the shell
-    let mut child = Command::new(zms)
+    let mut result: Vec<ZoneMemStat> = Vec::new();
+
+    let mut procstream: ProcessLineStream = Command::new(zms)
         .args(&args)
-        .stdout(Stdio::piped())
-        .spawn()?;
+        .try_into()?;
 
-    let stdout = child
-        .stdout
-        .take()
-        .expect("Failed to get output from zonememstat");
-    let reader = io::BufReader::new(stdout);
+    while let Some(line) = procstream.next().await {
+        match line.stdout() {
+            Some(l) => result.push(parse_line(l)),
+            None => ()
+        };
+    }
 
-    // Create an iterator over the lines
-    let lines = reader
-        .lines()
-        .map(|line| line.expect("Failed to read line"));
-
-    Ok(lines)
+    Ok(result)
 }
 
 /// Parse a single line from `zonememstat`
@@ -110,9 +107,9 @@ fn parse_line(x: &str) -> ZoneMemStat {
 
 /// Takes no input. Returns a Vec of ZoneMemStat structs. The global zone will
 /// always be element `0`.
-pub fn stat() -> Vec<ZoneMemStat> {
-    match get_state() {
-        Ok(lines) => lines.into_iter().map(|line| parse_line(&line)).collect(),
+pub async fn stat() -> Vec<ZoneMemStat> {
+    match get_state().await {
+        Ok(v) => v,
         Err(err) => {
             eprintln!("Error executing zonememstat: {:?}", err);
             Vec::new()
